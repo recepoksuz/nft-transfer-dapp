@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { getBscScanUrl, shortenAddress } from "@/lib/utils";
+import { useAccount } from "wagmi";
+import { shortenAddress } from "@/lib/utils";
 
 interface TransferStatusProps {
   hash?: `0x${string}`;
@@ -10,6 +11,58 @@ interface TransferStatusProps {
   isSuccess: boolean;
   error: Error | null;
   onReset: () => void;
+}
+
+type TransactionStep = "signing" | "broadcasting" | "confirming" | "confirmed";
+
+function TransactionStepper({ currentStep }: { currentStep: TransactionStep }) {
+  const steps = [
+    { id: "signing", label: "Signing", description: "Confirm in wallet" },
+    { id: "broadcasting", label: "Broadcasting", description: "Sending to network" },
+    { id: "confirming", label: "Confirming", description: "Waiting for block" },
+    { id: "confirmed", label: "Confirmed", description: "Transaction complete" },
+  ];
+
+  const getStepIndex = (step: TransactionStep) => steps.findIndex((s) => s.id === step);
+  const currentIndex = getStepIndex(currentStep);
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between">
+        {steps.map((step, index) => (
+          <div key={step.id} className="flex flex-1 items-center">
+            <div className="flex flex-col items-center">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors ${
+                  index < currentIndex
+                    ? "bg-green-500 text-white"
+                    : index === currentIndex
+                    ? "bg-yellow-500 text-black"
+                    : "bg-zinc-200 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400"
+                }`}
+              >
+                {index < currentIndex ? (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  index + 1
+                )}
+              </div>
+              <span className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">{step.label}</span>
+            </div>
+            {index < steps.length - 1 && (
+              <div
+                className={`mx-1 h-0.5 flex-1 transition-colors ${
+                  index < currentIndex ? "bg-green-500" : "bg-zinc-200 dark:bg-zinc-700"
+                }`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function TransferStatus({
@@ -21,6 +74,7 @@ export function TransferStatus({
   onReset,
 }: TransferStatusProps) {
   const [copied, setCopied] = useState(false);
+  const { chain } = useAccount();
 
   const copyToClipboard = async () => {
     if (hash) {
@@ -30,12 +84,34 @@ export function TransferStatus({
     }
   };
 
+  const getExplorerUrl = (txHash: string) => {
+    if (chain?.blockExplorers?.default?.url) {
+      return `${chain.blockExplorers.default.url}/tx/${txHash}`;
+    }
+    return `https://etherscan.io/tx/${txHash}`;
+  };
+
+  const getExplorerName = () => {
+    return chain?.blockExplorers?.default?.name || "Explorer";
+  };
+
+  const getCurrentStep = (): TransactionStep => {
+    if (isSuccess) return "confirmed";
+    if (isConfirming) return "confirming";
+    if (hash) return "broadcasting";
+    return "signing";
+  };
+
   if (!hash && !isPending && !error) {
     return null;
   }
 
   return (
     <div className="mt-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
+      {(isPending || isConfirming) && !error && (
+        <TransactionStepper currentStep={getCurrentStep()} />
+      )}
+
       {isPending && (
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
@@ -57,8 +133,8 @@ export function TransferStatus({
             </svg>
           </div>
           <div>
-            <p className="font-medium text-zinc-900 dark:text-zinc-100">Waiting for Confirmation</p>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Please confirm in your wallet...</p>
+            <p className="font-medium text-zinc-900 dark:text-zinc-100">Waiting for Signature</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Please confirm the transaction in your wallet...</p>
           </div>
         </div>
       )}
@@ -85,8 +161,8 @@ export function TransferStatus({
               </svg>
             </div>
             <div>
-              <p className="font-medium text-zinc-900 dark:text-zinc-100">Transaction Submitted</p>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Waiting for blockchain confirmation...</p>
+              <p className="font-medium text-zinc-900 dark:text-zinc-100">Mining Transaction</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Waiting for block confirmation on {chain?.name || "network"}...</p>
             </div>
           </div>
 
@@ -119,6 +195,8 @@ export function TransferStatus({
 
       {isSuccess && hash && (
         <div className="space-y-4">
+          <TransactionStepper currentStep="confirmed" />
+
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
               <svg className="h-5 w-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -168,13 +246,13 @@ export function TransferStatus({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-zinc-500 dark:text-zinc-400">Network</span>
-                <span className="text-sm text-zinc-700 dark:text-zinc-300">BSC Testnet</span>
+                <span className="text-sm text-zinc-700 dark:text-zinc-300">{chain?.name || "Unknown"}</span>
               </div>
             </div>
           </div>
 
           <a
-            href={getBscScanUrl(hash)}
+            href={getExplorerUrl(hash)}
             target="_blank"
             rel="noopener noreferrer"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
@@ -182,7 +260,7 @@ export function TransferStatus({
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
-            View on BscScan Explorer
+            View on {getExplorerName()}
           </a>
 
           <button
