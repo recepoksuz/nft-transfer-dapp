@@ -111,7 +111,6 @@ export function useERC721MultiTransfer() {
 
       // Start watching for confirmation in the background
       const hashToWatch = currentHash;
-      const tokenIdToWatch = tokenId;
 
       if (publicClient) {
         publicClient.waitForTransactionReceipt({ hash: hashToWatch })

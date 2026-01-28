@@ -97,6 +97,14 @@ export function BatchTransferForm() {
   const [toAddress, setToAddress] = useState("");
   const [tokens, setTokens] = useState<TokenItem[]>([]);
 
+  // Dynamic explorer URL based on connected chain
+  const getExplorerUrl = (txHash: string) => {
+    if (chain?.blockExplorers?.default?.url) {
+      return `${chain.blockExplorers.default.url}/tx/${txHash}`;
+    }
+    return `https://etherscan.io/tx/${txHash}`;
+  };
+
   // Determine which hook is active based on contract type
   const isProcessing = isERC721
     ? erc721Transfer.isTransferring || erc721Transfer.isPending || erc721Transfer.isConfirming
@@ -446,7 +454,7 @@ export function BatchTransferForm() {
                     {/* TX hash link for completed transfers */}
                     {tokenTransferStatus?.status === "success" && (
                       <a
-                        href={`https://testnet.bscscan.com/tx/${tokenTransferStatus.hash}`}
+                        href={getExplorerUrl(tokenTransferStatus.hash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-blue-500 hover:text-blue-400"
