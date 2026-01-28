@@ -2,7 +2,7 @@
   "name": "nft-transfer-dapp",
   "version": "1.0.0",
   "private": false,
-  "description": "A Next.js dApp for transferring ERC-721 and ERC-1155 NFTs on BSC Testnet with automatic contract detection",
+  "description": "A Next.js dApp for transferring ERC-721 and ERC-1155 NFTs on any EVM blockchain with automatic contract detection",
   "author": "recepoksuz",
   "license": "MIT",
   "scripts": {

@@ -1,14 +1,9 @@
-"use client";
-
-import { useState } from "react";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { AccountInfo } from "@/components/wallet/AccountInfo";
-import { TransferTabs } from "@/components/ui/TransferTabs";
-import { SingleTransferForm } from "@/components/transfer/SingleTransferForm";
-import { BatchTransferForm } from "@/components/transfer/BatchTransferForm";
+import { TransferSection } from "@/components/transfer/TransferSection";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"single" | "batch">("single");
+  const currentYear = new Date().getFullYear();
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
@@ -31,13 +26,7 @@ export default function Home() {
           <AccountInfo />
         </div>
 
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="mb-6">
-            <TransferTabs activeTab={activeTab} onTabChange={setActiveTab} />
-          </div>
-
-          {activeTab === "single" ? <SingleTransferForm /> : <BatchTransferForm />}
-        </div>
+        <TransferSection />
 
       </main>
 
@@ -88,7 +77,7 @@ export default function Home() {
               </a>
             </div>
             <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              © 2026 Recep Öksüz. MIT License.
+              © {currentYear} Recep Öksüz. MIT License.
             </p>
           </div>
         </div>
