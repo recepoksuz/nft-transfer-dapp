@@ -30,8 +30,11 @@ export function useERC721MultiTransfer() {
     from: Address;
   } | null>(null);
 
-  // Track if we've already moved to next for current hash
-  const movedToNextRef = useRef(false);
+  // Refs to prevent race conditions
+  const processedHashesRef = useRef<Set<string>>(new Set());
+  const lastExecutedIndexRef = useRef<number>(-1);
+  const isExecutingRef = useRef(false);
+
   const publicClient = usePublicClient();
 
   // Wagmi hooks
@@ -61,7 +64,13 @@ export function useERC721MultiTransfer() {
   const executeCurrentTransfer = useCallback(() => {
     if (!transferParams || currentIndex >= queue.length) return;
 
-    movedToNextRef.current = false;
+    // Prevent executing same index twice
+    if (lastExecutedIndexRef.current === currentIndex) return;
+    if (isExecutingRef.current) return;
+
+    lastExecutedIndexRef.current = currentIndex;
+    isExecutingRef.current = true;
+
     const tokenId = queue[currentIndex];
     writeContract({
       address: transferParams.contractAddress,
@@ -76,11 +85,15 @@ export function useERC721MultiTransfer() {
     (params: ERC721MultiTransferParams, from: Address) => {
       if (params.tokenIds.length === 0) return;
 
+      // Reset all refs
+      processedHashesRef.current = new Set();
+      lastExecutedIndexRef.current = -1;
+      isExecutingRef.current = false;
+
       setQueue(params.tokenIds);
       setCurrentIndex(0);
       setIsTransferring(true);
       setCompletedTransfers([]);
-      movedToNextRef.current = false;
       setTransferParams({
         contractAddress: params.contractAddress,
         to: params.to,
@@ -99,56 +112,68 @@ export function useERC721MultiTransfer() {
 
   // When we get a hash, immediately move to next token (don't wait for confirmation)
   useEffect(() => {
-    if (currentHash && isTransferring && !movedToNextRef.current && currentIndex < queue.length) {
-      movedToNextRef.current = true;
-      const tokenId = queue[currentIndex];
+    if (!currentHash || !isTransferring || currentIndex >= queue.length) return;
 
-      // Add to completed transfers as "pending"
-      setCompletedTransfers((prev) => [
-        ...prev,
-        { tokenId, hash: currentHash, status: "pending" },
-      ]);
+    // Check if we already processed this hash
+    if (processedHashesRef.current.has(currentHash)) return;
 
-      // Start watching for confirmation in the background
-      const hashToWatch = currentHash;
+    // Mark hash as processed
+    processedHashesRef.current.add(currentHash);
+    isExecutingRef.current = false;
 
-      if (publicClient) {
-        publicClient.waitForTransactionReceipt({ hash: hashToWatch })
-          .then(() => {
-            // Update status to success
-            setCompletedTransfers((prev) =>
-              prev.map((t) =>
-                t.hash === hashToWatch ? { ...t, status: "success" as const } : t
-              )
-            );
-          })
-          .catch(() => {
-            // Update status to failed
-            setCompletedTransfers((prev) =>
-              prev.map((t) =>
-                t.hash === hashToWatch ? { ...t, status: "failed" as const } : t
-              )
-            );
-          });
-      }
+    const tokenId = queue[currentIndex];
 
-      // Move to next token immediately
-      const nextIndex = currentIndex + 1;
-      if (nextIndex < queue.length) {
-        setCurrentIndex(nextIndex);
-        resetWrite();
-      } else {
-        // All transfers submitted, but may still be confirming
-        setCurrentIndex(nextIndex);
-      }
+    // Add to completed transfers as "pending"
+    setCompletedTransfers((prev) => [
+      ...prev,
+      { tokenId, hash: currentHash, status: "pending" },
+    ]);
+
+    // Start watching for confirmation in the background
+    const hashToWatch = currentHash;
+
+    if (publicClient) {
+      publicClient.waitForTransactionReceipt({ hash: hashToWatch })
+        .then(() => {
+          // Update status to success
+          setCompletedTransfers((prev) =>
+            prev.map((t) =>
+              t.hash === hashToWatch ? { ...t, status: "success" as const } : t
+            )
+          );
+        })
+        .catch(() => {
+          // Update status to failed
+          setCompletedTransfers((prev) =>
+            prev.map((t) =>
+              t.hash === hashToWatch ? { ...t, status: "failed" as const } : t
+            )
+          );
+        });
+    }
+
+    // Move to next token immediately
+    const nextIndex = currentIndex + 1;
+    setCurrentIndex(nextIndex);
+
+    // Reset write state for next transfer
+    if (nextIndex < queue.length) {
+      resetWrite();
     }
   }, [currentHash, isTransferring, currentIndex, queue, resetWrite, publicClient]);
 
   // Execute next transfer after moving to next index
   useEffect(() => {
-    if (isTransferring && currentIndex > 0 && currentIndex < queue.length && !currentHash && !isPending) {
+    if (!isTransferring || currentIndex === 0 || currentIndex >= queue.length) return;
+    if (currentHash || isPending) return;
+    if (lastExecutedIndexRef.current === currentIndex) return;
+
+    // Small delay to ensure state is settled
+    const timer = setTimeout(() => {
       executeCurrentTransfer();
-    }
+    }, 50);
+
+    return () => clearTimeout(timer);
   }, [isTransferring, currentIndex, queue.length, currentHash, isPending, executeCurrentTransfer]);
 
   // Check if we're done
@@ -168,8 +193,10 @@ export function useERC721MultiTransfer() {
       { tokenId, hash: "0x" as Hash, status: "failed" },
     ]);
 
-    movedToNextRef.current = true;
+    isExecutingRef.current = false;
     const nextIndex = currentIndex + 1;
+    lastExecutedIndexRef.current = -1; // Allow executing next index
+
     if (nextIndex < queue.length) {
       setCurrentIndex(nextIndex);
       resetWrite();
@@ -182,7 +209,9 @@ export function useERC721MultiTransfer() {
   const retry = useCallback(() => {
     if (!isTransferring || writeError === null) return;
     resetWrite();
-    movedToNextRef.current = false;
+    isExecutingRef.current = false;
+    lastExecutedIndexRef.current = -1; // Allow re-executing same index
+
     // Small delay before retry
     setTimeout(() => {
       executeCurrentTransfer();
@@ -196,7 +225,9 @@ export function useERC721MultiTransfer() {
     setIsTransferring(false);
     setCompletedTransfers([]);
     setTransferParams(null);
-    movedToNextRef.current = false;
+    processedHashesRef.current = new Set();
+    lastExecutedIndexRef.current = -1;
+    isExecutingRef.current = false;
     resetWrite();
   }, [resetWrite]);
 
