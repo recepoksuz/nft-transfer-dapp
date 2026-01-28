@@ -6,13 +6,78 @@ import { useERC1155BatchTransfer } from "@/hooks/useERC1155BatchTransfer";
 import { useERC721MultiTransfer } from "@/hooks/useERC721MultiTransfer";
 import { useContractType } from "@/hooks/useContractType";
 import { NFTSelector } from "./NFTSelector";
+import { ERC721MultiTransferStatus } from "./ERC721MultiTransferStatus";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { isValidAddress, shortenAddress } from "@/lib/utils";
 import type { Address } from "viem";
 import type { TokenItem } from "@/types";
 
+// ERC-1155 Success Component
+function ERC1155SuccessStatus({
+  hash,
+  onReset,
+}: {
+  hash?: `0x${string}`;
+  onReset: () => void;
+}) {
+  const { chain } = useAccount();
+
+  const getExplorerUrl = (txHash: string) => {
+    if (chain?.blockExplorers?.default?.url) {
+      return `${chain.blockExplorers.default.url}/tx/${txHash}`;
+    }
+    return `https://etherscan.io/tx/${txHash}`;
+  };
+
+  const getExplorerName = () => {
+    return chain?.blockExplorers?.default?.name || "Explorer";
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg
+            className="h-5 w-5 text-green-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          <span className="font-medium text-green-700 dark:text-green-400">
+            Batch transfer completed!
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-sm text-green-600 hover:text-green-500"
+        >
+          New Transfer
+        </button>
+      </div>
+      {hash && (
+        <a
+          href={getExplorerUrl(hash)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 block text-xs text-green-600 hover:text-green-500 dark:text-green-500 dark:hover:text-green-400"
+        >
+          View on {getExplorerName()}: {shortenAddress(hash)} ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function BatchTransferForm() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
 
   // ERC-1155 batch transfer hook
   const erc1155Transfer = useERC1155BatchTransfer();
@@ -416,65 +481,6 @@ export function BatchTransferForm() {
           )}
         </div>
 
-        {/* ERC-721 Progress Indicator */}
-        {isERC721 && erc721Transfer.isTransferring && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
-                Transfer Progress
-              </span>
-              <span className="text-sm text-yellow-600 dark:text-yellow-500">
-                {erc721Transfer.completedTransfers.length} / {erc721Transfer.totalCount}
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-yellow-200 dark:bg-yellow-800">
-              <div
-                className="h-full bg-yellow-500 transition-all duration-300"
-                style={{
-                  width: `${
-                    (erc721Transfer.completedTransfers.length /
-                      erc721Transfer.totalCount) *
-                    100
-                  }%`,
-                }}
-              />
-            </div>
-            {erc721Transfer.currentTokenId !== undefined && (
-              <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-500">
-                Transferring Token #{erc721Transfer.currentTokenId.toString()}...
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Error handling for ERC-721 */}
-        {isERC721 && erc721Transfer.error && erc721Transfer.isTransferring && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-            <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-400">
-              Transfer failed for Token #{erc721Transfer.failedTokenId?.toString()}
-            </p>
-            <p className="mb-3 text-xs text-red-600 dark:text-red-500">
-              {erc721Transfer.error.message?.slice(0, 100)}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => erc721Transfer.retry()}
-                className="rounded-md bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
-              >
-                Retry
-              </button>
-              <button
-                type="button"
-                onClick={() => erc721Transfer.skip()}
-                className="rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-              >
-                Skip & Continue
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Submit Button */}
         <button
           type="submit"
@@ -491,70 +497,32 @@ export function BatchTransferForm() {
         </button>
       </form>
 
-      {/* Success/Complete Status */}
-      {transferStatus === "complete" && (
-        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <svg
-                className="h-5 w-5 text-green-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              <span className="font-medium text-green-700 dark:text-green-400">
-                {isERC721
-                  ? `${erc721Transfer.completedTransfers.length} transfers completed!`
-                  : "Batch transfer completed!"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="text-sm text-green-600 hover:text-green-500"
-            >
-              New Transfer
-            </button>
-          </div>
+      {/* ERC-721 Multi Transfer Status */}
+      {isERC721 && (erc721Transfer.isTransferring || erc721Transfer.isComplete) && (
+        <ERC721MultiTransferStatus
+          isTransferring={erc721Transfer.isTransferring}
+          isComplete={erc721Transfer.isComplete}
+          isPending={erc721Transfer.isPending}
+          isConfirming={erc721Transfer.isConfirming}
+          currentIndex={erc721Transfer.currentIndex}
+          totalCount={erc721Transfer.totalCount}
+          currentTokenId={erc721Transfer.currentTokenId}
+          currentHash={erc721Transfer.currentHash}
+          completedTransfers={erc721Transfer.completedTransfers}
+          error={erc721Transfer.error}
+          failedTokenId={erc721Transfer.failedTokenId}
+          onRetry={erc721Transfer.retry}
+          onSkip={erc721Transfer.skip}
+          onReset={handleReset}
+        />
+      )}
 
-          {/* Show all TX hashes for ERC-721 */}
-          {isERC721 && erc721Transfer.completedTransfers.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {erc721Transfer.completedTransfers
-                .filter((t) => t.status === "success")
-                .map((transfer) => (
-                  <a
-                    key={transfer.hash}
-                    href={`https://testnet.bscscan.com/tx/${transfer.hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-xs text-green-600 hover:text-green-500 dark:text-green-500 dark:hover:text-green-400"
-                  >
-                    Token #{transfer.tokenId.toString()}: {shortenAddress(transfer.hash)} ↗
-                  </a>
-                ))}
-            </div>
-          )}
-
-          {/* Show TX hash for ERC-1155 */}
-          {!isERC721 && erc1155Transfer.hash && (
-            <a
-              href={`https://testnet.bscscan.com/tx/${erc1155Transfer.hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 block text-xs text-green-600 hover:text-green-500 dark:text-green-500 dark:hover:text-green-400"
-            >
-              View on BscScan: {shortenAddress(erc1155Transfer.hash)} ↗
-            </a>
-          )}
-        </div>
+      {/* ERC-1155 Success Status */}
+      {!isERC721 && erc1155Transfer.isSuccess && (
+        <ERC1155SuccessStatus
+          hash={erc1155Transfer.hash}
+          onReset={handleReset}
+        />
       )}
 
       {/* Error Status for ERC-1155 */}
